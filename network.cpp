@@ -175,7 +175,7 @@ int get_header_for_work(uint8_t *target, uint8_t *header)
 	tmp = target_to_diff((uint32_t*)target);
 	if(tmp != diff)
 	{
-		printf("\nnew difficulty = %lu\n", lround(tmp));
+		printf("\nnew difficulty = %u GH/block\n", lround(tmp/1.0e9));
 		diff = tmp;
 	}
 
@@ -224,12 +224,7 @@ bool submit_header(uint8_t *header)
 	{
 		if(in.len > 0)
 		{
-			if(strstr((char*)in.bytes, "\"Success\":true") == NULL)
-			{
-				fprintf(stderr, (char*)in.bytes);
-				free(in.bytes);
-				return false;
-			}
+			fprintf(stderr, (char*)in.bytes);
 		}
 		free(in.bytes);
 		return true;
