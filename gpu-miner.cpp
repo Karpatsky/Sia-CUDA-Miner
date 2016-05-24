@@ -75,6 +75,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 
 	if(!init)
 	{
+		cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 		cudaMallocHost(&headerHash, 32);
 		cudaMallocHost(&target, 32);
 		cudaMallocHost(&nonceOut, 8);
@@ -198,6 +199,19 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	return hash_rate;
 }
 
+int msver(void)
+{
+	switch(_MSC_VER)
+	{
+		case 1500: return 2008;
+		case 1600: return 2010;
+		case 1700: return 2012;
+		case 1800: return 2013;
+		case 1900: return 2015;
+		default: return (_MSC_VER / 100);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int c;
@@ -214,9 +228,13 @@ int main(int argc, char *argv[])
 	unsigned int cycles_per_iter = 15;
 	double seconds_per_iter = 10.0;
 
-	printf("\nSia-CUDA-Miner 2.02\n");
+#if defined _WIN64 || defined _LP64
+	printf("\nSia-CUDA-Miner 2.02 (64bit)\n");
+#else
+	printf("\nSia-CUDA-Miner 2.02 (32bit)\n");
+#endif
 #ifdef _MSC_VER
-	printf("Compiled with Visual C++ %d\n", _MSC_VER / 100);
+	printf("Compiled with Visual C++ %d\n", msver());
 #else
 #ifdef __clang__
 	printf("Compiled with Clang %s\n", __clang_version__);
