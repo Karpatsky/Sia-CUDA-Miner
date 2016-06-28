@@ -64,8 +64,8 @@ void network_init(const char *domain, const char *port, const char *useragent)
 		printf("\nmalloc error\n");
 		exit(EXIT_FAILURE);
 	}
-	sprintf(bfw_url, "http://%s:%s/miner/headerforwork", domain, port);
-	sprintf(submit_url, "http://%s:%s/miner/submitheader", domain, port);
+	sprintf(bfw_url, "http://%s:%s/miner/header", domain, port);
+	sprintf(submit_url, "http://%s:%s/miner/header", domain, port);
 	/*
 	res = curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
 	if(res != CURLE_OK)
