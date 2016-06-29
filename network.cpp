@@ -64,8 +64,8 @@ void network_init(const char *domain, const char *port, const char *useragent)
 		printf("\nmalloc error\n");
 		exit(EXIT_FAILURE);
 	}
-	sprintf(bfw_url, "http://%s:%s/miner/headerforwork", domain, port);
-	sprintf(submit_url, "http://%s:%s/miner/submitheader", domain, port);
+	sprintf(bfw_url, "http://%s:%s/miner/header", domain, port);
+	sprintf(submit_url, "http://%s:%s/miner/header", domain, port);
 	/*
 	res = curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
 	if(res != CURLE_OK)
@@ -111,7 +111,7 @@ int check_http_response(CURL *curl)
 	CURLcode err = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 	if(err == CURLE_OK)
 	{
-		if(http_code != 200 && http_code != 0)
+		if(http_code != 200 && http_code != 204 && http_code != 0)
 		{
 			fprintf(stderr, "\nHTTP error %lu", http_code);
 			if(http_code == 400)
