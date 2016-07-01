@@ -51,7 +51,7 @@ uint64_t rotr64(const uint64_t value, const int offset)
 __device__ __forceinline__
 uint64_t rotr64(const uint64_t x, const int offset)
 {
-	uint64_t result;
+/*	uint64_t result;
 	asm("{\n\t"
 		".reg .b64 lhs;\n\t"
 		".reg .u32 roff;\n\t"
@@ -62,6 +62,8 @@ uint64_t rotr64(const uint64_t x, const int offset)
 		"}\n"
 		: "=l"(result) : "l"(x), "r"(offset));
 	return result;
+	*/
+	return (((x) >> (offset)) | ((x) << (64 - (offset))));
 }
 #endif
 

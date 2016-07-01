@@ -30,7 +30,11 @@ unsigned int blocks_mined = 0;
 static volatile int quit = 0;
 bool target_corrupt_flag = false;
 
+#if defined _MSC_VER
+#define rotr64(x, n) _rotr64(x, n)
+#else
 #define rotr64(x, n)  (((x) >> (n)) | ((x) << (64 - (n))))
+#endif
 
 void quitSignal(int __unused)
 {
