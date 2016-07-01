@@ -178,7 +178,11 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 		{
 			printf("failed to read nonce from buffer: %s\n", cudaGetErrorString(ret)); exit(1);
 		}
-		cudaStreamSynchronize(cudastream);
+		ret = cudaStreamSynchronize(cudastream);
+		if(ret != cudaSuccess)
+		{
+			printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+		}
 
 		if(*nonceOut != 0)
 		{
