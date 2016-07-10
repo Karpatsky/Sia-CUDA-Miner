@@ -19,6 +19,8 @@ using namespace std;
 #include <cuda_profiler_api.h>
 #include "network.h"
 
+bool longpoll = false;
+char *address;
 uint64_t *blockHeadermobj = nullptr;
 uint64_t *headerHashmobj = nullptr;
 uint64_t *nonceOutmobj = nullptr;
@@ -112,7 +114,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	}
 
 	// Check for target corruption
-	if(target[0] != 0)
+	if(!longpoll && target[0] != 0)
 	{
 		if(target_corrupt_flag)
 		{
@@ -186,7 +188,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 
 		if(*nonceOut != 0)
 		{
-			int j = 4;
+			int j = 0;
 			while(headerHash[j] == ((uint8_t*)target)[j] && j<32)
 				j++;
 			if(j == 32 || headerHash[j] < ((uint8_t*)target)[j])
@@ -235,6 +237,7 @@ int main(int argc, char *argv[])
 	char *serverip = (char *)"localhost";
 	char *port_number = (char *)"9980";
 	char *useragent = (char *)"Sia-Agent";
+	address = nullptr;
 	double hash_rate;
 	uint32_t items_per_iter = 256 * 256 * 256 * 16;
 
@@ -262,12 +265,20 @@ int main(int argc, char *argv[])
 #endif
 	printf("Using Nvidia CUDA Toolkit %d.%d\n", CUDART_VERSION / 1000, (CUDART_VERSION % 1000) / 10);
 
-	while((c = getopt(argc, argv, "hc:s:p:d:u:")) != -1)
+	while((c = getopt(argc, argv, "hc:s:p:d:u:lq:")) != -1)
 	{
 		switch(c)
 		{
 			case 'h':
 				printf("\nUsage:\n\n");
+				printf("  -l           : enable pool mining (longpolling)\n");
+				printf("  -q <address> : wallet address used for pool mining\n");
+				printf("\n");
+				printf("  -u <url>     : pool url\n");
+				printf("\n");
+				printf("  -p <port>    : port number\n");
+				printf("                 default: %s\n", port_number);
+				printf("\n");
 				printf("  -c <cycles>  : number of hashing loops between API calls\n");
 				printf("                 default: %d\n", cycles_per_iter);
 				printf("                 Increase this if your computer is freezing or locking up\n");
@@ -278,13 +289,10 @@ int main(int argc, char *argv[])
 				printf("  -d <device>  : the device id of the card you want to use\n");
 				printf("                 default: 0\n");
 				printf("\n");
-				printf("  -u <address> : change the ip address / domain name that the miner is trying to connect to\n");
-				printf("                 default: %s\n", serverip);
-				printf("\n");
-				printf("  -p <port>    : change the port that the miner is trying to connect to\n");
-				printf("                 default: %s\n", port_number);
-				printf("\n");
 				exit(0);
+				break;
+			case 'l':
+				longpoll = true;;
 				break;
 			case 'c':
 				cycles_per_iter = strtoul(optarg, &tmp, 10);
@@ -306,7 +314,15 @@ int main(int argc, char *argv[])
 			case 'd':
 				deviceid = strtoul(optarg, &tmp, 10);
 				break;
+			case 'q':
+				address = _strdup(optarg);
+				break;
 		}
+	}
+	if(longpoll && address == nullptr)
+	{
+		printf("\nWallet address needed for pool mining !\n");
+		exit(1);
 	}
 
 	// Set siad URL
@@ -409,7 +425,10 @@ int main(int argc, char *argv[])
 
 		if(!quit && hash_rate != 0)
 		{
-			printf("\rMining at %.3f MH/s\t%u blocks mined", hash_rate, blocks_mined);
+			if(!longpoll)
+				printf("\rMining at %.3f MH/s\t%u blocks mined", hash_rate, blocks_mined);
+			else
+				printf("\rMining at %.3f MH/s\t%u shares mined", hash_rate, blocks_mined);
 			fflush(stdout);
 		}
 	}

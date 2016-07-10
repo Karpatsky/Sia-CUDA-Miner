@@ -6,6 +6,8 @@ using namespace std;
 #include "network.h"
 
 extern double target_to_diff(const uint32_t *const target);
+extern bool longpoll;
+extern char *address;
 
 static char bfw_url[255], submit_url[255];
 static CURL *curl;
@@ -41,7 +43,7 @@ void network_init(const char *domain, const char *port, const char *useragent)
 		printf("\nError: can't init curl\n");
 		exit(EXIT_FAILURE);
 	}
-	/* when we want to debug stuff
+/*
 	res = curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
 	if(res != CURLE_OK)
 	{
@@ -50,7 +52,7 @@ void network_init(const char *domain, const char *port, const char *useragent)
 		curl_easy_cleanup(curl);
 		exit(1);
 	}
-	*/
+*/
 	res = curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerrorbuffer);
 	if(res != CURLE_OK)
 	{
@@ -64,17 +66,18 @@ void network_init(const char *domain, const char *port, const char *useragent)
 		printf("\nmalloc error\n");
 		exit(EXIT_FAILURE);
 	}
-	sprintf(bfw_url, "http://%s:%s/miner/header", domain, port);
-	sprintf(submit_url, "http://%s:%s/miner/header", domain, port);
-	/*
-	res = curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-	if(res != CURLE_OK)
+
+	if(!longpoll)
 	{
-		fprintf(stderr, "%s\n", curlerrorbuffer);
-		curl_easy_cleanup(curl);
-		exit(1);
+		sprintf(bfw_url, "http://%s:%s/miner/header", domain, port);
+		sprintf(submit_url, "http://%s:%s/miner/header", domain, port);
 	}
-	*/
+	else
+	{
+		sprintf(bfw_url, "http://%s:%s/miner/header?address=%s", domain, port, address);
+		sprintf(submit_url, "http://%s:%s/miner/header?address=%s", domain, port, address);
+	}
+
 	res = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
 	if(res != CURLE_OK)
 	{
@@ -114,7 +117,7 @@ int check_http_response(CURL *curl)
 		if(http_code != 200 && http_code != 204 && http_code != 0)
 		{
 			fprintf(stderr, "\nHTTP error %lu", http_code);
-			if(http_code == 400)
+			if(!longpoll && http_code == 400)
 			{
 				fprintf(stderr, "\nplease unlock the wallet");
 				Sleep(10000);
@@ -175,7 +178,32 @@ int get_header_for_work(uint8_t *target, uint8_t *header)
 	tmp = target_to_diff((uint32_t*)target);
 	if(tmp != diff)
 	{
-		printf("\nnew difficulty = %u GH/block\n", lround(tmp/1.0e9));
+		double div;
+		char *e;
+		if(tmp < 100e15)
+		{
+			div = 1.0e12;
+			e = "T";
+		}
+		if(tmp < 100e12)
+		{
+			div = 1.0e9;
+			e = "G";
+		}
+		if(tmp < 100e9)
+		{
+			div = 1.0e6;
+			e = "M";
+		}
+		if(tmp < 100e6)
+		{
+			div = 1.0e3;
+			e = "k";
+		}
+		if(longpoll)
+			printf("\ndifficulty = %u %sH/share\n", lround(tmp / div), e);
+		else
+			printf("\ndifficulty = %u %sH/block\n", lround(tmp / div), e);
 		diff = tmp;
 	}
 
