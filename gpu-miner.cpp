@@ -19,6 +19,7 @@ using namespace std;
 #include <cuda_runtime.h>
 #include <cuda_profiler_api.h>
 #include "network.h"
+#include "gpu-cuda-miner.h"
 
 bool longpoll = false;
 char *address;
@@ -89,15 +90,15 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	if(!init)
 	{
 		cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-		cudaMallocHost(&headerHash, 32);
+		cudaMallocHost(&headerHash, 32 * MAXRESULTS);
 		cudaMallocHost(&target, 32);
-		cudaMallocHost(&nonceOut, 8);
+		cudaMallocHost(&nonceOut, 8 * MAXRESULTS);
 		cudaMallocHost(&blockHeader, 80);
 		cudaMallocHost(&v1, 16 * 8);
 		ret = cudaGetLastError();
 		if(ret != cudaSuccess)
 		{
-			printf("grindNonces init failed: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 		init = true;
 	}
@@ -131,7 +132,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 		return -1;
 	}
 	target_corrupt_flag = 0;
-	*nonceOut = 0;
+	memset(nonceOut, 0, 8 * MAXRESULTS);
 
 	v1[0] = 0xBB1838E7A0A44BF9u + ((uint64_t*)blockHeader)[0]; v1[12] = rotr64(0x510E527FADE68281u ^ v1[0], 32); v1[8] = 0x6a09e667f3bcc908u + v1[12]; v1[4] = rotr64(0x510e527fade682d1u ^ v1[8], 24);
 	v1[0] = v1[0] + v1[4] + ((uint64_t*)blockHeader)[1];       v1[12] = rotr64(v1[12] ^ v1[0], 16);              v1[8] = v1[8] + v1[12];               v1[4] = rotr64(v1[4] ^ v1[8], 63);
@@ -141,7 +142,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	ret = cudaMemcpyAsync(vpre, v1, 16 * 8, cudaMemcpyHostToDevice, cudastream);
 	if(ret != cudaSuccess)
 	{
-		printf("failed to write vpre buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 
 	for(i = 0; i < cycles_per_iter; i++)
@@ -153,55 +154,53 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 		ret = cudaMemcpyAsync(blockHeadermobj, blockHeader, 80, cudaMemcpyHostToDevice, cudastream);
 		if(ret != cudaSuccess)
 		{
-			printf("failed to write to blockHeadermobj buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
-		ret = cudaMemcpyAsync(nonceOutmobj, nonceOut, 8, cudaMemcpyHostToDevice, cudastream);
+		ret = cudaMemcpyAsync(nonceOutmobj, nonceOut, 8 * MAXRESULTS, cudaMemcpyHostToDevice, cudastream);
 		if(ret != cudaSuccess)
 		{
-			printf("failed to write nonce to buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 
-		extern void nonceGrindcuda(cudaStream_t, uint32_t, uint64_t *, uint64_t *, uint64_t *, uint64_t *);
 		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, headerHashmobj, nonceOutmobj, vpre);
-		ret = cudaGetLastError();
-		if(ret != cudaSuccess)
-		{
-			printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
-		}
 
 		// Copy result to host
-		ret = cudaMemcpyAsync(headerHash, headerHashmobj, 32, cudaMemcpyDeviceToHost, cudastream);
+		ret = cudaMemcpyAsync(headerHash, headerHashmobj, 32 * MAXRESULTS, cudaMemcpyDeviceToHost, cudastream);
 		if(ret != cudaSuccess)
 		{
-			printf("failed to read header hash from buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 
-		ret = cudaMemcpyAsync(nonceOut, nonceOutmobj, 8, cudaMemcpyDeviceToHost, cudastream);
+		ret = cudaMemcpyAsync(nonceOut, nonceOutmobj, 8 * MAXRESULTS, cudaMemcpyDeviceToHost, cudastream);
 		if(ret != cudaSuccess)
 		{
-			printf("failed to read nonce from buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 		ret = cudaStreamSynchronize(cudastream);
 		if(ret != cudaSuccess)
 		{
-			printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
-
-		if(*nonceOut != 0)
+		bool found = false;
+		int k = 0;
+		while(k<MAXRESULTS && nonceOut[k] != 0)
 		{
 			int j = 0;
-			while(headerHash[j] == ((uint8_t*)target)[j] && j<32)
+			while(headerHash[k*32+j] == ((uint8_t*)target)[j] && j < 32)
 				j++;
-			if(j == 32 || headerHash[j] < ((uint8_t*)target)[j])
+			if(j == 32 || headerHash[k*32+j] < ((uint8_t*)target)[j])
 			{
 				// Copy nonce to header.
-				((uint64_t*)blockHeader)[4] = *nonceOut;
+				((uint64_t*)blockHeader)[4] = nonceOut[k];
 				if(submit_header(blockHeader))
 					blocks_mined++;
-				return -1;
+				found = true;
 			}
-			*nonceOut = 0;
+			nonceOut[k] = 0;
+			k++;
 		}
+		if(found)
+			return -1;
 		if(quit)
 		{
 			return 0;
@@ -244,7 +243,7 @@ int main(int argc, char *argv[])
 	char *useragent = (char *)"Sia-Agent";
 	address = nullptr;
 	double hash_rate;
-	uint32_t items_per_iter = 256 * 256 * 256 * 16;
+	uint64_t items_per_iter = 256 * 256 * 256 * 16;
 
 	// parse args
 	unsigned int cycles_per_iter = 15;
@@ -364,7 +363,7 @@ int main(int argc, char *argv[])
 		ret = cudaGetDeviceProperties(&deviceProp, device);
 		if(ret != cudaSuccess)
 		{
-			printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+			printf("CUDA error in %s line %d: %s\n", __FILE__ , __LINE__,cudaGetErrorString(ret)); exit(1);
 		}
 		printf("Device %d: %s (Compute Capability %d.%d)\n", device, deviceProp.name, deviceProp.major, deviceProp.minor);
 	}
@@ -373,40 +372,40 @@ int main(int argc, char *argv[])
 	ret = cudaSetDevice(deviceid);
 	if(ret != cudaSuccess)
 	{
-		printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 	cudaDeviceReset();
 	ret = cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
 	if(ret != cudaSuccess)
 	{
-		printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 
 	ret = cudaStreamCreate(&cudastream);
 	if(ret != cudaSuccess)
 	{
-		printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 	// Create Buffer Objects
 	ret = cudaMalloc(&blockHeadermobj, 80);
 	if(ret != cudaSuccess)
 	{
-		printf("failed to create blockHeadermobj buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
-	ret = cudaMalloc(&headerHashmobj, 32);
+	ret = cudaMalloc(&headerHashmobj, 32 * MAXRESULTS);
 	if(ret != cudaSuccess)
 	{
-		printf("failed to create headerHashmobj buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
-	ret = cudaMalloc(&nonceOutmobj, 8);
+	ret = cudaMalloc(&nonceOutmobj, 8 * MAXRESULTS);
 	if(ret != cudaSuccess)
 	{
-		printf("failed to create nonceOutmobj buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 	ret = cudaMalloc(&vpre, 16 * 8);
 	if(ret != cudaSuccess)
 	{
-		printf("failed to create vpre buffer: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 
 	chrono::time_point<chrono::system_clock> startTime, endTime;
@@ -416,7 +415,7 @@ int main(int argc, char *argv[])
 
 	endTime = chrono::system_clock::now();
 	double elapsedTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime).count() / 1000000.0;
-	items_per_iter *= (uint32_t)((seconds_per_iter / elapsedTime) / cycles_per_iter);
+	items_per_iter *= (seconds_per_iter / elapsedTime) / cycles_per_iter;
 
 	// Grind nonces until SIGINT
 	signal(SIGINT, quitSignal);
@@ -442,7 +441,7 @@ int main(int argc, char *argv[])
 	ret = cudaStreamDestroy(cudastream);
 	if(ret != cudaSuccess)
 	{
-		printf("CUDA error: %s\n", cudaGetErrorString(ret)); exit(1);
+		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
 	cudaProfilerStop();
 	cudaDeviceReset();

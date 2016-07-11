@@ -32,6 +32,9 @@
     <ClInclude Include="getopt\getopt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\gpu-cuda-miner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\gpu-cuda-miner.cu">

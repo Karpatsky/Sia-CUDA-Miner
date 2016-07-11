@@ -225,6 +225,7 @@
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\gpu-cuda-miner.h" />
     <ClInclude Include="..\network.h" />
     <ClInclude Include="getopt\getopt.h" />
   </ItemGroup>
