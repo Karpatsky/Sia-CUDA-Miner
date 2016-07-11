@@ -66,8 +66,9 @@ static inline uint32_t swap32(uint32_t x)
 double target_to_diff(const uint32_t *const target)
 {
 	//	return (4294967296.0 * 0xffff0000) / ((double)swap32(target[2]) + ((double)swap32(target[1]) * 4294967296.0));
-	return pow(2.0, 8 * 32) / ((((((swap32(target[1])
-                 * 4294967296.0 + swap32(target[2]))
+	return pow(2.0, 8 * 32) / (((((((swap32(target[0])
+		             * 4294967296.0 + swap32(target[1]))
+		             * 4294967296.0 + swap32(target[2]))
 								 * 4294967296.0 + swap32(target[3]))
 								 * 4294967296.0 + swap32(target[4]))
 								 * 4294967296.0 + swap32(target[5]))
@@ -78,7 +79,7 @@ double target_to_diff(const uint32_t *const target)
 // Perform global_item_size * iter_per_thread hashes
 // Return -1 if a block is found
 // Else return the hashrate in MH/s
-double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
+double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 {
 	static bool init = false;
 	static uint8_t *headerHash = nullptr;
@@ -162,8 +163,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 
-		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, headerHashmobj, nonceOutmobj, vpre);
-
+		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, headerHashmobj, nonceOutmobj, vpre, swap32(target[0]));
 		// Copy result to host
 		ret = cudaMemcpyAsync(headerHash, headerHashmobj, 32 * MAXRESULTS, cudaMemcpyDeviceToHost, cudastream);
 		if(ret != cudaSuccess)
@@ -194,7 +194,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 				((uint64_t*)blockHeader)[4] = nonceOut[k];
 				if(submit_header(blockHeader))
 					blocks_mined++;
-				found = true;
+			found = true;
 			}
 			nonceOut[k] = 0;
 			k++;

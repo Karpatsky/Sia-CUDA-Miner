@@ -86,11 +86,11 @@ uint64_t __swap_hilo(const uint64_t source)
 #define blocksize 128
 #define npt 256
 
-__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1)
+__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1, uint32_t target)
 {
 	uint64_t header[10], h[4], v[16];
 
-	const uint32_t id = (blockDim.x * blockIdx.x + threadIdx.x)*npt;
+	uint32_t id = (blockDim.x * blockIdx.x + threadIdx.x)*npt;
 
 #pragma unroll
 	for (int i = 0; i < 10; i++)
@@ -298,33 +298,33 @@ __global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __re
 		v[2] = v[2] + __byte_perm_64(v[7] ^ v[8], 0x6543, 0x2107) + header[7];
 
 		h[0] = 0x6A09E667F2BDC928 ^ v[0] ^ (v[8] + __byte_perm_64(v[13] ^ v[2], 0x5432, 0x1076));
-		if (*((uint32_t*)h) == 0)
+		if (*((uint32_t*)h) <= target)
 		{
 			int i;
 			uint64_t tmp = header[4];
 			for(i = 0; i < MAXRESULTS; i++)
 			{
-				tmp = atomicExch(&nonceOut[i], tmp);
+				tmp = atomicCAS(&nonceOut[i], 0, tmp);
 				if(tmp == 0)
 					break;
 			}
 
-			hashOut[i*8] = h[0];
+			hashOut[i*4] = h[0];
 			v[1] = v[1] + v[6] + header[0]; v[12] = __swap_hilo(v[12] ^ v[1]); v[11] = v[11] + v[12];
 			v[1] = v[1] + __byte_perm_64(v[6] ^ v[11], 0x6543, 0x2107) + header[2];
 			v[3] = v[3] + v[4] + header[5]; v[14] = __swap_hilo(v[14] ^ v[3]); v[9] = v[9] + v[14];
 			v[3] = v[3] + __byte_perm_64(v[4] ^ v[9], 0x6543, 0x2107) + header[3];
-			hashOut[i*8+1] = 0xbb67ae8584caa73b ^ v[1] ^ (v[9] + __byte_perm_64(v[14] ^ v[3], 0x5432, 0x1076));
-			hashOut[i*8+2] = 0x3c6ef372fe94f82b ^ v[2] ^ (v[10] + __byte_perm_64(v[15] ^ v[0], 0x5432, 0x1076));
-			hashOut[i*8+3] = 0xa54ff53a5f1d36f1 ^ v[3] ^ (v[11] + __byte_perm_64(v[12] ^ v[1], 0x5432, 0x1076));
+			hashOut[i*4+1] = 0xbb67ae8584caa73b ^ v[1] ^ (v[9] + __byte_perm_64(v[14] ^ v[3], 0x5432, 0x1076));
+			hashOut[i*4+2] = 0x3c6ef372fe94f82b ^ v[2] ^ (v[10] + __byte_perm_64(v[15] ^ v[0], 0x5432, 0x1076));
+			hashOut[i*4+3] = 0xa54ff53a5f1d36f1 ^ v[3] ^ (v[11] + __byte_perm_64(v[12] ^ v[1], 0x5432, 0x1076));
 			return;
 		}
 	}
 }
 
-void nonceGrindcuda(cudaStream_t cudastream, uint32_t threads, uint64_t *blockHeader, uint64_t *headerHash, uint64_t *nonceOut, uint64_t *vpre)
+void nonceGrindcuda(cudaStream_t cudastream, uint64_t threads, uint64_t *blockHeader, uint64_t *headerHash, uint64_t *nonceOut, uint64_t *vpre, uint32_t target)
 {
-	nonceGrind << <threads / blocksize / npt, blocksize, 0, cudastream >> >(blockHeader, headerHash, nonceOut, vpre);
+	nonceGrind << <threads / blocksize / npt, blocksize, 0, cudastream >> >(blockHeader, headerHash, nonceOut, vpre, target);
 	cudaError_t ret = cudaGetLastError();
 	if(ret != cudaSuccess)
 	{
