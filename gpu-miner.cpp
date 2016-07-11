@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <cmath>
 using namespace std;
 #include <signal.h>
 #ifdef _MSC_VER
@@ -217,6 +218,7 @@ double grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 
 int msver(void)
 {
+#ifdef _MSC_VER
 	switch(_MSC_VER)
 	{
 		case 1500: return 2008;
@@ -226,6 +228,9 @@ int msver(void)
 		case 1900: return 2015;
 		default: return (_MSC_VER / 100);
 	}
+#else
+	return 0;
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -411,7 +416,7 @@ int main(int argc, char *argv[])
 
 	endTime = chrono::system_clock::now();
 	double elapsedTime = chrono::duration_cast<chrono::microseconds>(endTime - startTime).count() / 1000000.0;
-	items_per_iter *= (seconds_per_iter / elapsedTime) / cycles_per_iter;
+	items_per_iter *= (uint32_t)((seconds_per_iter / elapsedTime) / cycles_per_iter);
 
 	// Grind nonces until SIGINT
 	signal(SIGINT, quitSignal);
