@@ -46,40 +46,10 @@ void quitSignal(int __unused)
 	printf("\nquitting...\n");
 }
 
-#if ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
-#define LINUX_BSWAP
-#endif
-
-static inline uint32_t swap32(uint32_t x)
-{
-#ifdef LINUX_BSWAP
-	return __builtin_bswap32(x);
-#else
-#ifdef _MSC_VER
-	return _byteswap_ulong(x);
-#else
-	return ((((x) << 24) & 0xff000000u) | (((x) << 8) & 0x00ff0000u) | (((x) >> 8) & 0x0000ff00u) | (((x) >> 24) & 0x000000ffu));
-#endif
-#endif
-}
-
-double target_to_diff(const uint32_t *const target)
-{
-	//	return (4294967296.0 * 0xffff0000) / ((double)swap32(target[2]) + ((double)swap32(target[1]) * 4294967296.0));
-	return pow(2.0, 8 * 32) / (((((((swap32(target[0])
-		             * 4294967296.0 + swap32(target[1]))
-		             * 4294967296.0 + swap32(target[2]))
-								 * 4294967296.0 + swap32(target[3]))
-								 * 4294967296.0 + swap32(target[4]))
-								 * 4294967296.0 + swap32(target[5]))
-								 * 4294967296.0 + swap32(target[6]))
-								 * 4294967296.0 + swap32(target[7]));
-}
-
 // Perform global_item_size * iter_per_thread hashes
 // Return -1 if a block is found
 // Else return the hashrate in MH/s
-double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
+static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 {
 	static bool init = false;
 	static uint8_t *headerHash = nullptr;
@@ -186,15 +156,15 @@ double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 		while(k<MAXRESULTS && nonceOut[k] != 0)
 		{
 			int j = 0;
-			while(headerHash[k*32+j] == ((uint8_t*)target)[j] && j < 32)
+			while(j < 32 && headerHash[k * 32 + j] == ((uint8_t*)target)[j])
 				j++;
-			if(j == 32 || headerHash[k*32+j] < ((uint8_t*)target)[j])
+			if(j == 32 || headerHash[k * 32 + j] < ((uint8_t*)target)[j])
 			{
 				// Copy nonce to header.
 				((uint64_t*)blockHeader)[4] = nonceOut[k];
 				if(submit_header(blockHeader))
 					blocks_mined++;
-			found = true;
+				found = true;
 			}
 			nonceOut[k] = 0;
 			k++;
@@ -215,7 +185,7 @@ double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 	return hash_rate;
 }
 
-int msver(void)
+static int msver(void)
 {
 #ifdef _MSC_VER
 	switch(_MSC_VER)

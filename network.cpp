@@ -5,7 +5,6 @@
 using namespace std;
 #include "network.h"
 
-extern double target_to_diff(const uint32_t *const target);
 extern bool longpoll;
 extern char *address;
 
@@ -13,6 +12,19 @@ static char bfw_url[255], submit_url[255];
 static CURL *curl;
 static char curlerrorbuffer[CURL_ERROR_SIZE];
 struct inData in;
+
+static double target_to_diff(const uint32_t *const target)
+{
+	//	return (4294967296.0 * 0xffff0000) / ((double)swap32(target[2]) + ((double)swap32(target[1]) * 4294967296.0));
+	return pow(2.0, 8 * 32) / (((((((swap32(target[0])
+		* 4294967296.0 + swap32(target[1]))
+		* 4294967296.0 + swap32(target[2]))
+		* 4294967296.0 + swap32(target[3]))
+		* 4294967296.0 + swap32(target[4]))
+		* 4294967296.0 + swap32(target[5]))
+		* 4294967296.0 + swap32(target[6]))
+		* 4294967296.0 + swap32(target[7]));
+}
 
 // Write network data to an array of bytes
 size_t writefunc(void *ptr, size_t size, size_t nmemb, struct inData *in)
@@ -108,7 +120,7 @@ void network_cleanup(void)
 	curl_easy_cleanup(curl);
 }
 
-int check_http_response(CURL *curl)
+static int check_http_response(CURL *curl)
 {
 	long http_code = 0;
 	CURLcode err = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
