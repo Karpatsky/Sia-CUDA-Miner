@@ -83,22 +83,24 @@ uint64_t __swap_hilo(const uint64_t source)
 	return r;
 }
 
-#define blocksize 128
-#define npt 256
+#define blocksize 256
 
-__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1, uint32_t target)
+__device__ unsigned int numberofresults;
+
+__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1, uint32_t target, uint64_t highnonce)
 {
 	uint64_t header[10], h[4], v[16];
-
-	uint32_t id = (blockDim.x * blockIdx.x + threadIdx.x)*npt;
+	uint64_t start = (highnonce << 48) + (blockDim.x * blockIdx.x + threadIdx.x)*npt;
+	
+	numberofresults = 0;
 
 #pragma unroll
 	for (int i = 0; i < 10; i++)
 		header[i] = headerIn[i];
 
-	for (int n = id; n < id + npt; n++)
+	for (uint64_t n = start; n < start + npt; n++)
 	{
-		((uint32_t*)header)[8] = n;
+		header[4] = n;
 		v[2] = 0x5BF2CD1EF9D6B596u + header[4]; v[14] = __swap_hilo(~0x1f83d9abfb41bd6bu ^ v[2]); v[10] = 0x3c6ef372fe94f82bu + v[14]; v[6] = __byte_perm_64(0x1f83d9abfb41bd6bu ^ v[10], 0x6543, 0x2107);
 		v[2] = v[2] + v[6] + header[5]; v[14] = __byte_perm_64(v[14] ^ v[2], 0x5432, 0x1076); v[10] = v[10] + v[14]; v[6] = rotr64(v[6] ^ v[10], 63);
 		v[3] = 0x130C253729B586Au + header[6]; v[15] = __swap_hilo(0x5be0cd19137e2179u ^ v[3]); v[11] = 0xa54ff53a5f1d36f1u + v[15]; v[7] = __byte_perm_64(0x5be0cd19137e2179u ^ v[11], 0x6543, 0x2107);
@@ -298,25 +300,22 @@ __global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __re
 		v[2] = v[2] + __byte_perm_64(v[7] ^ v[8], 0x6543, 0x2107) + header[7];
 
 		h[0] = 0x6A09E667F2BDC928 ^ v[0] ^ (v[8] + __byte_perm_64(v[13] ^ v[2], 0x5432, 0x1076));
-		if (*((uint32_t*)h) <= target)
+		if(*((uint32_t*)h) <= target)
 		{
-			int i;
-			uint64_t tmp = header[4];
-			for(i = 0; i < MAXRESULTS; i++)
+			int i = atomicAdd(&numberofresults, 1);
+			if(i < MAXRESULTS)
 			{
-				tmp = atomicCAS(&nonceOut[i], 0, tmp);
-				if(tmp == 0)
-					break;
-			}
+				nonceOut[i] = n;
 
-			hashOut[i*4] = h[0];
-			v[1] = v[1] + v[6] + header[0]; v[12] = __swap_hilo(v[12] ^ v[1]); v[11] = v[11] + v[12];
-			v[1] = v[1] + __byte_perm_64(v[6] ^ v[11], 0x6543, 0x2107) + header[2];
-			v[3] = v[3] + v[4] + header[5]; v[14] = __swap_hilo(v[14] ^ v[3]); v[9] = v[9] + v[14];
-			v[3] = v[3] + __byte_perm_64(v[4] ^ v[9], 0x6543, 0x2107) + header[3];
-			hashOut[i*4+1] = 0xbb67ae8584caa73b ^ v[1] ^ (v[9] + __byte_perm_64(v[14] ^ v[3], 0x5432, 0x1076));
-			hashOut[i*4+2] = 0x3c6ef372fe94f82b ^ v[2] ^ (v[10] + __byte_perm_64(v[15] ^ v[0], 0x5432, 0x1076));
-			hashOut[i*4+3] = 0xa54ff53a5f1d36f1 ^ v[3] ^ (v[11] + __byte_perm_64(v[12] ^ v[1], 0x5432, 0x1076));
+				hashOut[i * 4] = h[0];
+				v[1] = v[1] + v[6] + header[0]; v[12] = __swap_hilo(v[12] ^ v[1]); v[11] = v[11] + v[12];
+				v[1] = v[1] + __byte_perm_64(v[6] ^ v[11], 0x6543, 0x2107) + header[2];
+				v[3] = v[3] + v[4] + header[5]; v[14] = __swap_hilo(v[14] ^ v[3]); v[9] = v[9] + v[14];
+				v[3] = v[3] + __byte_perm_64(v[4] ^ v[9], 0x6543, 0x2107) + header[3];
+				hashOut[i * 4 + 1] = 0xbb67ae8584caa73b ^ v[1] ^ (v[9] + __byte_perm_64(v[14] ^ v[3], 0x5432, 0x1076));
+				hashOut[i * 4 + 2] = 0x3c6ef372fe94f82b ^ v[2] ^ (v[10] + __byte_perm_64(v[15] ^ v[0], 0x5432, 0x1076));
+				hashOut[i * 4 + 3] = 0xa54ff53a5f1d36f1 ^ v[3] ^ (v[11] + __byte_perm_64(v[12] ^ v[1], 0x5432, 0x1076));
+			}
 			return;
 		}
 	}
@@ -324,10 +323,12 @@ __global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __re
 
 void nonceGrindcuda(cudaStream_t cudastream, uint64_t threads, uint64_t *blockHeader, uint64_t *headerHash, uint64_t *nonceOut, uint64_t *vpre, uint32_t target)
 {
-	nonceGrind << <threads / blocksize / npt, blocksize, 0, cudastream >> >(blockHeader, headerHash, nonceOut, vpre, target);
+	static uint16_t highnonce = 0;
+	nonceGrind << <threads / blocksize / npt, blocksize, 0, cudastream >> >(blockHeader, headerHash, nonceOut, vpre, target, highnonce);
 	cudaError_t ret = cudaGetLastError();
 	if(ret != cudaSuccess)
 	{
 		printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 	}
+	highnonce++;
 }

@@ -103,7 +103,6 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 		return -1;
 	}
 	target_corrupt_flag = 0;
-	memset(nonceOut, 0, 8 * MAXRESULTS);
 
 	v1[0] = 0xBB1838E7A0A44BF9u + ((uint64_t*)blockHeader)[0]; v1[12] = rotr64(0x510E527FADE68281u ^ v1[0], 32); v1[8] = 0x6a09e667f3bcc908u + v1[12]; v1[4] = rotr64(0x510e527fade682d1u ^ v1[8], 24);
 	v1[0] = v1[0] + v1[4] + ((uint64_t*)blockHeader)[1];       v1[12] = rotr64(v1[12] ^ v1[0], 16);              v1[8] = v1[8] + v1[12];               v1[4] = rotr64(v1[4] ^ v1[8], 63);
@@ -118,16 +117,13 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 
 	for(i = 0; i < cycles_per_iter; i++)
 	{
-		blockHeader[38] = i / 256;
-		blockHeader[39] = i % 256;
-
 		// Copy input data to the memory buffer
 		ret = cudaMemcpyAsync(blockHeadermobj, blockHeader, 80, cudaMemcpyHostToDevice, cudastream);
 		if(ret != cudaSuccess)
 		{
 			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
-		ret = cudaMemcpyAsync(nonceOutmobj, nonceOut, 8 * MAXRESULTS, cudaMemcpyHostToDevice, cudastream);
+		ret = cudaMemsetAsync(nonceOutmobj, 0, 8 * MAXRESULTS, cudastream);
 		if(ret != cudaSuccess)
 		{
 			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
@@ -166,7 +162,6 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 					blocks_mined++;
 				found = true;
 			}
-			nonceOut[k] = 0;
 			k++;
 		}
 		if(found)
