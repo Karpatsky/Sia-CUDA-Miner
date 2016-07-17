@@ -233,9 +233,9 @@ int main(int argc, char *argv[])
 	double seconds_per_iter = 10.0;
 
 #if defined _WIN64 || defined _LP64
-	printf("\nSia-CUDA-Miner 4.01 (64bit)\n");
+	printf("\nSia-CUDA-Miner 4.02 (64bit)\n");
 #else
-	printf("\nSia-CUDA-Miner 4.01 (32bit)\n");
+	printf("\nSia-CUDA-Miner 4.02 (32bit)\n");
 #endif
 #ifdef _MSC_VER
 	printf("Compiled with Visual C++ %d\n", msver());
