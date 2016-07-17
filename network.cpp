@@ -179,7 +179,7 @@ int get_header_for_work(uint8_t *target, uint8_t *header)
 	}
 	if(in.len != 112)
 	{
-		fprintf(stderr, "\ncurl did not receive correct bytes (got %Iu, expected 112)\n", in.len);
+		fprintf(stderr, "\ncurl did not receive correct bytes (got %zu, expected 112)\n", in.len);
 		free(in.bytes);
 		return 1;
 	}
@@ -195,27 +195,27 @@ int get_header_for_work(uint8_t *target, uint8_t *header)
 		if(tmp < 100e15)
 		{
 			div = 1.0e12;
-			e = "T";
+			e = (char*)"T";
 		}
 		if(tmp < 100e12)
 		{
 			div = 1.0e9;
-			e = "G";
+			e = (char*)"G";
 		}
 		if(tmp < 100e9)
 		{
 			div = 1.0e6;
-			e = "M";
+			e = (char*)"M";
 		}
 		if(tmp < 100e6)
 		{
 			div = 1.0e3;
-			e = "k";
+			e = (char*)"k";
 		}
 		if(longpoll)
-			printf("\ndifficulty = %u %sH/share\n", lround(tmp / div), e);
+			printf("\ndifficulty = %u %sH/share\n", (unsigned int)lround(tmp / div), e);
 		else
-			printf("\ndifficulty = %u %sH/block\n", lround(tmp / div), e);
+			printf("\ndifficulty = %u %sH/block\n", (unsigned int)lround(tmp / div), e);
 		diff = tmp;
 	}
 
@@ -264,7 +264,7 @@ bool submit_header(uint8_t *header)
 	{
 		if(in.len > 0)
 		{
-			fprintf(stderr, (char*)in.bytes);
+			fprintf(stderr, "%s\n", (char*)in.bytes);
 		}
 		free(in.bytes);
 		return true;
