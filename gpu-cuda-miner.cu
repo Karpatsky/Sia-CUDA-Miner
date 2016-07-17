@@ -83,11 +83,24 @@ uint64_t __swap_hilo(const uint64_t source)
 	return r;
 }
 
+__device__ __forceinline__ uint64_t cuda_swap64(uint64_t x)
+{
+	uint64_t result;
+	uint2 t;
+	asm("mov.b64 {%0,%1},%2; \n\t"
+			: "=r"(t.x), "=r"(t.y) : "l"(x));
+	t.x = __byte_perm(t.x, 0, 0x0123);
+	t.y = __byte_perm(t.y, 0, 0x0123);
+	asm("mov.b64 %0,{%1,%2}; \n\t"
+			: "=l"(result) : "r"(t.y), "r"(t.x));
+	return result;
+}
+
 #define blocksize 256
 
 __device__ unsigned int numberofresults;
 
-__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1, uint32_t target, uint64_t highnonce)
+__global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __restrict__ headerIn, uint64_t * __restrict__ hashOut, uint64_t * __restrict__ nonceOut, const uint64_t * __restrict__ v1, uint64_t target, uint64_t highnonce)
 {
 	uint64_t header[10], h[4], v[16];
 	uint64_t start = (highnonce << 48) + (blockDim.x * blockIdx.x + threadIdx.x)*npt;
@@ -300,7 +313,7 @@ __global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __re
 		v[2] = v[2] + __byte_perm_64(v[7] ^ v[8], 0x6543, 0x2107) + header[7];
 
 		h[0] = 0x6A09E667F2BDC928 ^ v[0] ^ (v[8] + __byte_perm_64(v[13] ^ v[2], 0x5432, 0x1076));
-		if(*((uint32_t*)h) <= target)
+		if(cuda_swap64(h[0]) < target)
 		{
 			int i = atomicAdd(&numberofresults, 1);
 			if(i < MAXRESULTS)
@@ -321,7 +334,7 @@ __global__ void __launch_bounds__(blocksize, 4) nonceGrind(const uint64_t * __re
 	}
 }
 
-void nonceGrindcuda(cudaStream_t cudastream, uint64_t threads, uint64_t *blockHeader, uint64_t *headerHash, uint64_t *nonceOut, uint64_t *vpre, uint32_t target)
+void nonceGrindcuda(cudaStream_t cudastream, uint64_t threads, uint64_t *blockHeader, uint64_t *headerHash, uint64_t *nonceOut, uint64_t *vpre, uint64_t target)
 {
 	static uint16_t highnonce = 0;
 	nonceGrind << <threads / blocksize / npt, blocksize, 0, cudastream >> >(blockHeader, headerHash, nonceOut, vpre, target, highnonce);

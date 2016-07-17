@@ -46,13 +46,24 @@ void quitSignal(int __unused)
 	printf("\nquitting...\n");
 }
 
+static void printhexbytes(uint8_t *data, size_t sizeofdata)
+{
+	char *buffer = new char[2 * sizeofdata + 1];
+	buffer[2 * sizeofdata] = '\0';
+
+	for(int j = 0; j < sizeofdata; j++)
+		sprintf(&buffer[2 * j], "%02x", data[j]);
+	printf("%s", buffer);
+	delete[] buffer;
+}
+
 // Perform global_item_size * iter_per_thread hashes
 // Return -1 if a block is found
 // Else return the hashrate in MH/s
 static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 {
 	static bool init = false;
-	static uint8_t *headerHash = nullptr;
+	static uint64_t *headerHash = nullptr;
 	static uint32_t *target = nullptr;
 	static uint64_t *nonceOut = nullptr;
 	static uint8_t *blockHeader = nullptr;
@@ -129,7 +140,7 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 			printf("CUDA error in %s line %d: %s\n", __FILE__, __LINE__, cudaGetErrorString(ret)); exit(1);
 		}
 
-		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, headerHashmobj, nonceOutmobj, vpre, swap32(target[0]));
+		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, headerHashmobj, nonceOutmobj, vpre, swap64(*(uint64_t*)target));
 		// Copy result to host
 		ret = cudaMemcpyAsync(headerHash, headerHashmobj, 32 * MAXRESULTS, cudaMemcpyDeviceToHost, cudastream);
 		if(ret != cudaSuccess)
@@ -152,10 +163,17 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 		while(k<MAXRESULTS && nonceOut[k] != 0)
 		{
 			int j = 0;
-			while(j < 32 && headerHash[k * 32 + j] == ((uint8_t*)target)[j])
+			while(j < 4 && swap64(headerHash[k * 4 + j]) == ((uint64_t*)target)[j])
 				j++;
-			if(j == 32 || headerHash[k * 32 + j] < ((uint8_t*)target)[j])
+			if(j == 4 || swap64(headerHash[k * 4 + j]) < ((uint64_t*)target)[j])
 			{
+				/* debug
+				printf("\n");
+				printhexbytes((uint8_t*)target, 8);
+				printf(" target\n");
+				printhexbytes((uint8_t*)(headerHash + k * 4), 8);
+				printf(" hash\n");
+				*/
 				// Copy nonce to header.
 				((uint64_t*)blockHeader)[4] = nonceOut[k];
 				if(submit_header(blockHeader))
