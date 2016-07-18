@@ -162,7 +162,7 @@ static double grindNonces(uint64_t items_per_iter, int cycles_per_iter)
 		int k = 0;
 		while(k<MAXRESULTS && nonceOut[k] != 0)
 		{
-			int j = 0;
+			int j = 1;
 			while(j < 4 && swap64(headerHash[k * 4 + j]) == ((uint64_t*)target)[j])
 				j++;
 			if(j == 4 || swap64(headerHash[k * 4 + j]) < ((uint64_t*)target)[j])
